@@ -200,7 +200,11 @@ const toSub = (s) => s.split('').map((c) => SUB[c] || c).join('');
 
 function sanitizeMath(text) {
   if (!text) return text;
-  let t = text;
+  // Protejeaza codul (```...``` si `inline`) de curatarea de "math",
+  // altfel s-ar strica acoladele, \n-urile si indicii din cod (informatica).
+  const codeBlocks = [];
+  let t = text.replace(/```[\s\S]*?```/g, (m) => ` @@C${codeBlocks.push(m) - 1}@@ `);
+  t = t.replace(/`[^`\n]*`/g, (m) => ` @@C${codeBlocks.push(m) - 1}@@ `);
   // scoate delimitatorii de math
   t = t.replace(/\$\$([\s\S]*?)\$\$/g, '$1').replace(/\$([^$\n]*?)\$/g, '$1');
   t = t.replace(/\\\[([\s\S]*?)\\\]/g, '$1').replace(/\\\(([\s\S]*?)\\\)/g, '$1');
@@ -225,11 +229,13 @@ function sanitizeMath(text) {
   t = t.replace(/\\([a-zA-Z]+)/g, '$1');
   // acolade ramase
   t = t.replace(/[{}]/g, '');
+  // restaureaza blocurile de cod protejate
+  t = t.replace(/@@C(\d+)@@/g, (m, i) => codeBlocks[Number(i)]);
   return t;
 }
 
 const BASE_RULES =
-  'Esti un profesor rabdator care explica pe intelesul elevilor de liceu.\n' +
+  'Esti un profesor rabdator care explica pe intelesul elevilor de liceu, la TOATE materiile de BAC: matematica, informatica, fizica, romana, chimie, biologie, istorie etc.\n' +
   'REGULI (obligatorii):\n' +
   '- Scrie in limba romana, clar si prietenos, ca pentru un elev care invata.\n' +
   '- EXPLICA MEREU: nu da doar rezultatul, ci si rationamentul — de ce faci fiecare pas, ce formula folosesti si de ce se aplica.\n' +
@@ -239,6 +245,9 @@ const BASE_RULES =
   '- MATEMATICA in TEXT SIMPLU cu simboluri Unicode normale. ESTE INTERZIS LaTeX: fara $, fara \\frac, \\sqrt, \\times, \\pm, fara acolade { } sau ^{ } _{ }.\n' +
   '  Scrie asa: fractii ca (a)/(b) sau a/b, puteri ca x² sau x^2, radical ca √(x), indici ca x₁, x₂, x₃. Foloseste simboluri: × ÷ ± √ π ² ³ ≤ ≥ ≠ ≈ → ∞ ∫ Σ Δ ∈.\n' +
   '  Exemple CORECTE: "x₁,₂ = (-b ± √Δ) / (2a)", "x₃ = -1/2 - i", "∫ x² dx = x³/3 + C", "lim (x→0) sin(x)/x = 1".\n' +
+  '- FIZICA: la fiecare problema include unitatile de masura (m, s, kg, N, J, W, m/s²) si formula folosita, apoi calculul.\n' +
+  '- INFORMATICA: scrie codul in blocuri Markdown cu limbajul specificat (```cpp, ```python sau ```pseudocod). Pentru BAC foloseste C++ sau pseudocod. Explica algoritmul pas cu pas si complexitatea unde e cazul. In blocurile de cod scrie cod normal (acolade, indentare, operatori) — acolo regulile de matematica NU se aplica.\n' +
+  '- ROMANA: pentru eseuri/comentarii structureaza clar (introducere, cuprins cu argumente sustinute prin citate din text, incheiere) si foloseste termeni de teorie literara. Pentru gramatica: da regula + exemple.\n' +
   '- Verifica-ti rezultatul la final daca se poate (ex: inlocuind solutia).\n' +
   '- Termina cu o linie clara: "**Raspuns final:** ...".\n' +
   'Fii complet si didactic, fara text de umplutura.';
