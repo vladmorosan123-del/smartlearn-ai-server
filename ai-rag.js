@@ -400,5 +400,15 @@ app.post('/api/ai/debug', requireAdmin, async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`AI-RAG-local pe http://localhost:${PORT}  (key: ${process.env.GEMINI_API_KEY ? 'da' : 'LIPSA'}, supabase: ${SUPABASE_URL && SUPABASE_ANON_KEY ? 'da' : 'LIPSA'}, index: ${localIndex.length} bucati)`);
+  console.log(`AI-RAG server pe portul ${PORT}  (key: ${process.env.GEMINI_API_KEY ? 'da' : 'LIPSA'}, supabase: ${SUPABASE_URL && SUPABASE_ANON_KEY ? 'da' : 'LIPSA'}, index: ${localIndex.length} bucati)`);
 });
+
+// Keep-alive: pe Render gratuit serverul adoarme dupa ~15 min inactivitate,
+// iar trezirea dureaza 1-3 min. Se auto-pinge la 10 min ca sa ramana treaz.
+const KEEP_ALIVE_URL = process.env.RENDER_EXTERNAL_URL;
+if (KEEP_ALIVE_URL) {
+  setInterval(() => {
+    fetch(`${KEEP_ALIVE_URL}/api/health`).catch(() => {});
+  }, 10 * 60 * 1000);
+  console.log('Keep-alive activat pentru', KEEP_ALIVE_URL);
+}
