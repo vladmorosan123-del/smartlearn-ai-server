@@ -454,6 +454,7 @@ app.post('/api/ai/mentor', rateLimit, async (req, res) => {
       'In functie de mesaj faci DOUA lucruri: ' +
       '(A) Daca elevul te INTREABA ceva sau cere ajutor la o problema/tema — RASPUNZI COMPLET in campul "reply": rezolvi pas cu pas si explici, exact ca un tutor bun. ' +
       '(B) Daca elevul RAPORTEAZA ce a lucrat / cum s-a descurcat — raspunzi scurt si incurajator si ii actualizezi progresul. ' +
+      'IMPORTANT: cand elevul spune ca NU STIE, NU INTELEGE sau SE BLOCHEAZA la un subiect, pe langa ca il ajuti in reply, adauga OBLIGATORIU acel subiect in actions.todosAdd (lista "de lucrat"). ' +
       'Mereu poti recomanda lectii/teste/probleme din materialele platformei. ' +
       'INFORMATICA: scrie codul in blocuri ```cpp sau ```pseudocod. MATEMATICA/FIZICA: simboluri Unicode (× ÷ √ π ² ³), fara LaTeX; la fizica pune unitatile. ' +
       'Raspunde DOAR cu JSON valid, in limba romana.';
@@ -470,7 +471,7 @@ app.post('/api/ai/mentor', rateLimit, async (req, res) => {
       `  "actions": {\n` +
       `    "chaptersDone": ["id-uri de capitole de bifat ca FACUTE daca elevul zice ca le-a terminat"],\n` +
       `    "chaptersUndone": ["id-uri de debifat"],\n` +
-      `    "todosAdd": [{"title":"scurt","hint":"ce sa faca concret"}],\n` +
+      `    "todosAdd": [{"title":"subiectul de exersat","hint":"ce sa faca concret"}] (pune AICI orice subiect la care elevul zice ca nu stie / nu intelege / se blocheaza),\n` +
       `    "todosDone": ["titlul exact al unui todo de marcat completat"],\n` +
       `    "strengthsAdd": [{"title":"scurt","note":"ce i-a iesit bine"}],\n` +
       `    "workLogAdd": {"what":"ce a lucrat","duration":"ex: 45m"},\n` +
@@ -508,10 +509,8 @@ app.listen(PORT, () => {
 
 // Keep-alive: pe Render gratuit serverul adoarme dupa ~15 min inactivitate,
 // iar trezirea dureaza 1-3 min. Se auto-pinge la 10 min ca sa ramana treaz.
-const KEEP_ALIVE_URL = process.env.RENDER_EXTERNAL_URL;
-if (KEEP_ALIVE_URL) {
-  setInterval(() => {
-    fetch(`${KEEP_ALIVE_URL}/api/health`).catch(() => {});
-  }, 10 * 60 * 1000);
-  console.log('Keep-alive activat pentru', KEEP_ALIVE_URL);
-}
+const KEEP_ALIVE_URL = process.env.RENDER_EXTERNAL_URL || 'https://smartlearn-ai-server.onrender.com';
+setInterval(() => {
+  fetch(`${KEEP_ALIVE_URL}/api/health`).catch(() => {});
+}, 10 * 60 * 1000);
+console.log('Keep-alive activat pentru', KEEP_ALIVE_URL);
