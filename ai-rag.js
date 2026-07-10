@@ -203,8 +203,8 @@ function sanitizeMath(text) {
   // Protejeaza codul (```...``` si `inline`) de curatarea de "math",
   // altfel s-ar strica acoladele, \n-urile si indicii din cod (informatica).
   const codeBlocks = [];
-  let t = text.replace(/```[\s\S]*?```/g, (m) => ` @@C${codeBlocks.push(m) - 1}@@ `);
-  t = t.replace(/`[^`\n]*`/g, (m) => ` @@C${codeBlocks.push(m) - 1}@@ `);
+  let t = text.replace(/```[\s\S]*?```/g, (m) => `@@C${codeBlocks.push(m) - 1}@@`);
+  t = t.replace(/`[^`\n]*`/g, (m) => `@@C${codeBlocks.push(m) - 1}@@`);
   // scoate delimitatorii de math
   t = t.replace(/\$\$([\s\S]*?)\$\$/g, '$1').replace(/\$([^$\n]*?)\$/g, '$1');
   t = t.replace(/\\\[([\s\S]*?)\\\]/g, '$1').replace(/\\\(([\s\S]*?)\\\)/g, '$1');
@@ -406,6 +406,100 @@ app.post('/api/ai/debug', requireAdmin, async (req, res) => {
       .slice(0, 8);
     res.json({ question, top: scored });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Mentor AI ──────────────────────────────────────────────
+// Genereaza raspuns structurat (JSON) pentru mentorul personal.
+async function generateJSON(contents, systemInstruction) {
+  const models = [CHAT_MODEL, 'gemini-2.5-flash-lite'];
+  let lastErr;
+  for (const model of models) {
+    try {
+      return await withRetry(async () => {
+        const result = await ai.models.generateContent({
+          model, contents,
+          config: { systemInstruction, maxOutputTokens: 8192, responseMimeType: 'application/json' },
+        });
+        return JSON.parse(result.text || '{}');
+      }, 'json');
+    } catch (err) { lastErr = err; }
+  }
+  throw lastErr;
+}
+
+// Materiale unice disponibile (pentru recomandari), filtrate pe materie.
+function materialsForSubject(subject) {
+  const seen = new Set();
+  const list = [];
+  for (const c of localIndex) {
+    if (seen.has(c.material_id)) continue;
+    if (subject && subject !== 'universal' && (c.subject || '').toLowerCase() !== String(subject).toLowerCase()) continue;
+    seen.add(c.material_id);
+    list.push({ title: c.title, subject: c.subject });
+  }
+  return list.slice(0, 40);
+}
+
+app.post('/api/ai/mentor', rateLimit, async (req, res) => {
+  try {
+    const { message, history = [], subject = 'universal', state = {} } = req.body || {};
+    if (!message || String(message).trim().length < 1) return res.status(400).json({ error: 'Mesaj lipsa' });
+
+    const chapters = Array.isArray(state.chapters) ? state.chapters : [];
+    const todos = Array.isArray(state.todos) ? state.todos : [];
+    const materials = materialsForSubject(subject);
+
+    const systemInstruction =
+      'Esti "Mentor AI", profesorul personal al unui elev de liceu din Romania (BAC: matematica, informatica, fizica, romana etc). ' +
+      'In functie de mesaj faci DOUA lucruri: ' +
+      '(A) Daca elevul te INTREABA ceva sau cere ajutor la o problema/tema — RASPUNZI COMPLET in campul "reply": rezolvi pas cu pas si explici, exact ca un tutor bun. ' +
+      '(B) Daca elevul RAPORTEAZA ce a lucrat / cum s-a descurcat — raspunzi scurt si incurajator si ii actualizezi progresul. ' +
+      'Mereu poti recomanda lectii/teste/probleme din materialele platformei. ' +
+      'INFORMATICA: scrie codul in blocuri ```cpp sau ```pseudocod. MATEMATICA/FIZICA: simboluri Unicode (× ÷ √ π ² ³), fara LaTeX; la fizica pune unitatile. ' +
+      'Raspunde DOAR cu JSON valid, in limba romana.';
+
+    const prompt =
+      `MESAJUL ELEVULUI: "${String(message).slice(0, 1500)}"\n\n` +
+      `MATERIA ACTIVA: ${subject}\n\n` +
+      `CAPITOLE (id | eticheta | facut):\n${chapters.map((c) => `${c.id} | ${c.label} | ${c.done ? 'da' : 'nu'}`).join('\n') || '(niciunul)'}\n\n` +
+      `DE LUCRAT ACUM:\n${todos.filter((t) => !t.done).map((t) => `- ${t.title}`).join('\n') || '(gol)'}\n\n` +
+      `MATERIALE DISPONIBILE (recomanda DOAR din astea, cu titlul exact; nu inventa):\n${materials.map((m) => `- ${m.title} (${m.subject || '?'})`).join('\n') || '(niciunul)'}\n\n` +
+      `Intoarce EXACT acest JSON:\n` +
+      `{\n` +
+      `  "reply": "raspunsul tau: daca elevul intreaba ceva sau cere ajutor la o problema, REZOLVI complet pas cu pas si explici (ca un tutor); daca doar raporteaza ce a lucrat, raspunzi scurt si incurajator",\n` +
+      `  "actions": {\n` +
+      `    "chaptersDone": ["id-uri de capitole de bifat ca FACUTE daca elevul zice ca le-a terminat"],\n` +
+      `    "chaptersUndone": ["id-uri de debifat"],\n` +
+      `    "todosAdd": [{"title":"scurt","hint":"ce sa faca concret"}],\n` +
+      `    "todosDone": ["titlul exact al unui todo de marcat completat"],\n` +
+      `    "strengthsAdd": [{"title":"scurt","note":"ce i-a iesit bine"}],\n` +
+      `    "workLogAdd": {"what":"ce a lucrat","duration":"ex: 45m"},\n` +
+      `    "examsAdd": [{"type":"Test","title":"scurt","scope":"din ce capitole","when":"ex: 18 iul","daysLeft":9,"plan":["zi 1-3: ...","zi 4-6: ..."]}]\n` +
+      `  },\n` +
+      `  "recommendations": [{"type":"Lectie","title":"titlu material real din lista sau o tema","reason":"de ce ii ajuta"}]\n` +
+      `}\n` +
+      `Toate campurile din "actions" sunt optionale — pune [] sau omite daca nu se aplica. Nu bifa capitole daca elevul nu a spus clar ca le-a terminat. ` +
+      `Daca elevul mentioneaza un test/simulare/examen viitor (si din ce da), adauga-l in "examsAdd" cu un mini-plan concret de pregatire pana atunci.`;
+
+    const contents = [];
+    for (const h of (Array.isArray(history) ? history.slice(-6) : [])) {
+      if (h && h.content) contents.push({ role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(h.content).slice(0, 2000) }] });
+    }
+    contents.push({ role: 'user', parts: [{ text: prompt }] });
+
+    const out = await generateJSON(contents, systemInstruction);
+    if (out && out.reply) out.reply = sanitizeMath(String(out.reply));
+    out.actions = out.actions || {};
+    out.recommendations = Array.isArray(out.recommendations) ? out.recommendations : [];
+    res.json(out);
+  } catch (err) {
+    console.error('mentor error:', err);
+    const msg = String((err && err.message) || err);
+    if (/RESOURCE_EXHAUSTED|quota|429/i.test(msg)) {
+      return res.json({ reply: 'Am atins limita gratuita de raspunsuri pentru moment. Te rog incearca din nou peste un minut.', actions: {}, recommendations: [] });
+    }
+    res.status(500).json({ error: 'Eroare mentor: ' + msg });
+  }
 });
 
 app.listen(PORT, () => {
