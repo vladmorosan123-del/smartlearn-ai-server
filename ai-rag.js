@@ -411,7 +411,8 @@ app.post('/api/ai/debug', requireAdmin, async (req, res) => {
 // ─── Mentor AI ──────────────────────────────────────────────
 // Genereaza raspuns structurat (JSON) pentru mentorul personal.
 async function generateJSON(contents, systemInstruction) {
-  const models = [CHAT_MODEL, 'gemini-2.5-flash-lite'];
+  // 'gemini-flash-latest' are cota separata (modelele fixe se epuizeaza des pe planul gratuit)
+  const models = ['gemini-flash-latest', CHAT_MODEL, 'gemini-2.5-flash-lite'];
   let lastErr;
   for (const model of models) {
     try {
@@ -435,7 +436,7 @@ function materialsForSubject(subject) {
     if (seen.has(c.material_id)) continue;
     if (subject && subject !== 'universal' && (c.subject || '').toLowerCase() !== String(subject).toLowerCase()) continue;
     seen.add(c.material_id);
-    list.push({ title: c.title, subject: c.subject });
+    list.push({ id: c.material_id, title: c.title, subject: c.subject, category: c.category });
   }
   return list.slice(0, 40);
 }
@@ -464,7 +465,7 @@ app.post('/api/ai/mentor', rateLimit, async (req, res) => {
       `MATERIA ACTIVA: ${subject}\n\n` +
       `CAPITOLE (id | eticheta | facut):\n${chapters.map((c) => `${c.id} | ${c.label} | ${c.done ? 'da' : 'nu'}`).join('\n') || '(niciunul)'}\n\n` +
       `DE LUCRAT ACUM:\n${todos.filter((t) => !t.done).map((t) => `- ${t.title}`).join('\n') || '(gol)'}\n\n` +
-      `MATERIALE DISPONIBILE (recomanda DOAR din astea, cu titlul exact; nu inventa):\n${materials.map((m) => `- ${m.title} (${m.subject || '?'})`).join('\n') || '(niciunul)'}\n\n` +
+      `MATERIALE DISPONIBILE (PRIORITATE: recomanda mai intai DIN ASTEA, folosind id-ul si titlul EXACT; recomanda o tema generala fara id doar daca nimic din lista nu se potriveste):\n${materials.map((m) => `- [${m.id}] ${m.title} (${m.subject || '?'})`).join('\n') || '(niciunul)'}\n\n` +
       `Intoarce EXACT acest JSON:\n` +
       `{\n` +
       `  "reply": "raspunsul tau: daca elevul intreaba ceva sau cere ajutor la o problema, REZOLVI complet pas cu pas si explici (ca un tutor); daca doar raporteaza ce a lucrat, raspunzi scurt si incurajator",\n` +
@@ -477,7 +478,7 @@ app.post('/api/ai/mentor', rateLimit, async (req, res) => {
       `    "workLogAdd": {"what":"ce a lucrat","duration":"ex: 45m"},\n` +
       `    "examsAdd": [{"type":"Test","title":"scurt","scope":"din ce capitole","when":"ex: 18 iul","daysLeft":9,"plan":["zi 1-3: ...","zi 4-6: ..."]}]\n` +
       `  },\n` +
-      `  "recommendations": [{"type":"Lectie","title":"titlu material real din lista sau o tema","reason":"de ce ii ajuta"}]\n` +
+      `  "recommendations": [{"type":"Lectie","materialId":"id-ul EXACT din lista de materiale daca recomanzi unul din ele, altfel lasa gol","title":"titlul material real din lista sau o tema","reason":"de ce ii ajuta"}]\n` +
       `}\n` +
       `Toate campurile din "actions" sunt optionale — pune [] sau omite daca nu se aplica. Nu bifa capitole daca elevul nu a spus clar ca le-a terminat. ` +
       `Daca elevul mentioneaza un test/simulare/examen viitor (si din ce da), adauga-l in "examsAdd" cu un mini-plan concret de pregatire pana atunci.`;
@@ -492,6 +493,14 @@ app.post('/api/ai/mentor', rateLimit, async (req, res) => {
     if (out && out.reply) out.reply = sanitizeMath(String(out.reply));
     out.actions = out.actions || {};
     out.recommendations = Array.isArray(out.recommendations) ? out.recommendations : [];
+    // ataseaza un materialId VERIFICAT (setat doar daca materialul chiar exista in lista)
+    const normT = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const byId = new Map(materials.map((m) => [String(m.id), m]));
+    const byTitle = new Map(materials.map((m) => [normT(m.title), m]));
+    out.recommendations = out.recommendations.map((r) => {
+      const mat = (r && r.materialId && byId.get(String(r.materialId))) || (r && byTitle.get(normT(r.title)));
+      return { ...r, materialId: mat ? String(mat.id) : null };
+    });
     res.json(out);
   } catch (err) {
     console.error('mentor error:', err);
