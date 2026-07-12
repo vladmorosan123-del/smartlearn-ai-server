@@ -476,12 +476,14 @@ app.post('/api/ai/mentor', rateLimit, async (req, res) => {
       `    "todosDone": ["titlul exact al unui todo de marcat completat"],\n` +
       `    "strengthsAdd": [{"title":"scurt","note":"ce i-a iesit bine"}],\n` +
       `    "workLogAdd": {"what":"ce a lucrat","duration":"ex: 45m"},\n` +
+      `    "testsDone": <numar INTREG de teste/simulari pe care le-a FACUT/rezolvat elevul, daca a mentionat (ex: "am lucrat 3 teste" -> 3); altfel omite>,\n` +
       `    "examsAdd": [{"type":"Test","title":"scurt","scope":"din ce capitole","when":"ex: 18 iul","daysLeft":9,"plan":["zi 1-3: ...","zi 4-6: ..."]}]\n` +
       `  },\n` +
       `  "recommendations": [{"type":"Lectie","materialId":"id-ul EXACT din lista de materiale daca recomanzi unul din ele, altfel lasa gol","title":"titlul material real din lista sau o tema","reason":"de ce ii ajuta"}]\n` +
       `}\n` +
       `Toate campurile din "actions" sunt optionale — pune [] sau omite daca nu se aplica. Nu bifa capitole daca elevul nu a spus clar ca le-a terminat. ` +
-      `Daca elevul mentioneaza un test/simulare/examen viitor (si din ce da), adauga-l in "examsAdd" cu un mini-plan concret de pregatire pana atunci.`;
+      `Daca elevul mentioneaza un test/simulare/examen VIITOR (si din ce da), adauga-l in "examsAdd" cu un mini-plan. ` +
+      `Daca elevul zice ca A FACUT / a lucrat / a rezolvat teste (deja), pune numarul lor in "testsDone" (NU in examsAdd).`;
 
     const contents = [];
     for (const h of (Array.isArray(history) ? history.slice(-6) : [])) {
